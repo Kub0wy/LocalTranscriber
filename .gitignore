@@ -6,6 +6,7 @@ xcuserdata/
 
 # Build output
 build/
+release-build/
 DerivedData/
 .derived-data-runtime-inventory/
 *.xcarchive
