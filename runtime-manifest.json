@@ -1,0 +1,84 @@
+{
+  "runtimeVersion": "1.0.0",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "minimumMacOS": "14.0",
+  "runtime": {
+    "archive": "LocalTranscriber-Runtime-1.0.0-macos-arm64.tar.gz",
+    "sha256": "ba5f496a0d306eb3589986eb8986847d4e1792234573a0f7f9501574f3718216",
+    "downloadSizeBytes": 398146982,
+    "releaseTag": "runtime-v1.0.0",
+    "url": "https://github.com/Kub0wy/LocalTranscriber/releases/download/runtime-v1.0.0/LocalTranscriber-Runtime-1.0.0-macos-arm64.tar.gz"
+  },
+  "python": {
+    "version": "3.12.14",
+    "executableRelativePath": "Runtime/Environment/bin/python3",
+    "runtimeRelativePath": "Runtime/Python"
+  },
+  "ffmpeg": {
+    "version": "9.0.1-https://www.martin-riedl.de",
+    "sha256": "393e4c395020a1cb7cbd77fbe00599ce69d1c6466fee0dbd59d13f86a81a1611",
+    "executableRelativePath": "Runtime/FFmpeg/ffmpeg",
+    "ffprobeRelativePath": "Runtime/FFmpeg/ffprobe",
+    "ffprobeSha256": "7abc49fb2bdf2204f018e76dc6e0a8ae7643313bae09a9fa43e7eb12442271bc",
+    "ffprobeSource": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffprobe.zip",
+    "ffprobeAvailableInInventoriedEnvironment": false,
+    "packagedFFprobeRequired": true
+  },
+  "pythonPackages": {
+    "anyio": "4.15.1",
+    "certifi": "2026.7.22",
+    "charset-normalizer": "3.5.1",
+    "click": "8.5.0",
+    "filelock": "4.0.0",
+    "fsspec": "2026.7.0",
+    "h11": "0.16.0",
+    "hf-xet": "1.6.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "huggingface-hub": "1.31.0",
+    "idna": "3.19",
+    "jinja2": "3.1.6",
+    "llvmlite": "0.49.0",
+    "markupsafe": "3.0.3",
+    "mlx": "0.32.2",
+    "mlx-metal": "0.32.2",
+    "mlx-whisper": "0.4.3",
+    "more-itertools": "11.1.0",
+    "mpmath": "1.3.0",
+    "networkx": "3.6.1",
+    "numba": "0.67.0",
+    "numpy": "2.5.3",
+    "packaging": "26.3",
+    "pyyaml": "6.0.3",
+    "regex": "2026.9.10",
+    "requests": "2.34.2",
+    "scipy": "1.18.1",
+    "setuptools": "84.0.0",
+    "sympy": "1.14.0",
+    "tiktoken": "0.14.0",
+    "torch": "2.14.0",
+    "tqdm": "4.70.1",
+    "typing-extensions": "4.16.0",
+    "urllib3": "2.8.0"
+  },
+  "mlxDistribution": {
+    "source": "official-pypi-wheel",
+    "wheelPlatform": "macosx_14_0_arm64",
+    "pythonTag": "cp312",
+    "mlxWheelSha256": "77217798a2b036bae9f213b851d4cde4581893787c9964458b7d471f86036bd6",
+    "mlxMetalWheelSha256": "3825fff379dbc107dd3413e564a06caeaa24819910ec49c0439e454c06a1b9b8"
+  },
+  "model": {
+    "provider": "huggingface",
+    "repo": "mlx-community/whisper-large-v3-turbo",
+    "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+    "directoryRelativePath": "Models/models--mlx-community--whisper-large-v3-turbo/snapshots/a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+    "downloadSizeBytesApproximate": 1610612736,
+    "requiredFiles": [
+      "config.json",
+      "weights.safetensors"
+    ],
+    "downloadMode": "separate"
+  }
+}
