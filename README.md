@@ -156,8 +156,25 @@ Current source builds require:
 - FFmpeg
 - a local MLX-compatible Whisper model
 
-> **Managed installation is not available yet.**  
-> Until the installer is released, open **Settings → Runtime / Advanced**, select **Custom**, and point LocalTranscriber to your existing Python, FFmpeg, and Whisper model locations.
+### Managed CLI installation
+
+Clone the repository and run the transparent CLI installer:
+
+```bash
+git clone https://github.com/Kub0wy/LocalTranscriber.git
+cd LocalTranscriber
+./installer/install.sh
+```
+
+The installer shows the complete plan before downloading anything. It installs
+Runtime 1.0.0 from the dedicated GitHub Release and, after separate consent,
+downloads Whisper Large v3 Turbo directly from its upstream Hugging Face
+repository. No Homebrew or system Python installation is modified.
+
+For runtime-only, model-only, validation, repair, non-interactive, and custom
+location commands, see [installer/README.md](installer/README.md).
+
+The SwiftUI first-run installer is not implemented yet.
 
 ---
 
@@ -171,7 +188,7 @@ LocalTranscriber supports two runtime modes.
 
 ### Automatic / Managed
 
-The app already contains the path-resolution architecture for a future managed runtime.
+The CLI installer uses the app's managed runtime path-resolution architecture.
 
 Default managed location:
 
@@ -187,7 +204,8 @@ Default managed location:
 └── Config/
 ```
 
-The automatic downloader/installer is planned for a future release.
+The current installer is command-line based. A SwiftUI first-run installer is
+planned for a future release.
 
 ### Custom
 
