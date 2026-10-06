@@ -142,21 +142,48 @@ LocalTranscriber is designed as a local-first tool.
 - no filename upload to StudioFlow
 - no model-path upload to StudioFlow
 
+During managed setup, the installer contacts GitHub only to download the
+versioned LocalTranscriber Runtime and Hugging Face only to download the pinned
+Whisper model. Audio and transcription content are never sent to either
+service. LocalTranscriber contains no analytics or tracking.
+
 The **StudioFlow** and **Buy Me a Coffee** buttons simply open their URLs in your default browser.
 
 ---
 
 ## Requirements
 
-Current source builds require:
+LocalTranscriber requires:
 
 - **macOS 14 or later**
 - **Apple Silicon**
-- Python with `mlx-whisper`
-- FFmpeg
-- a local MLX-compatible Whisper model
 
-### Managed CLI installation
+### Recommended: app-managed setup
+
+On first launch, choose **Automatic / Managed** and let the native setup screen
+install the required components. Before any network access, LocalTranscriber
+shows the exact components, sources, approximate download sizes, disk-space
+requirement, and destination. Nothing is downloaded until you click **Install**.
+
+The app uses the same auditable installation engine as the CLI installer:
+
+- Runtime 1.0.0 is downloaded from the explicit GitHub Release asset.
+- Whisper Large v3 Turbo is downloaded separately from its pinned upstream
+  Hugging Face revision.
+- the Runtime checksum is verified before extraction;
+- installation is staged and atomically published without administrator access;
+- Homebrew, system Python, and `PATH` are not changed.
+
+The default managed-data location is:
+
+```text
+~/Library/Application Support/LocalTranscriber
+```
+
+You can select another writable folder, including an external SSD. Changing
+the location does not silently move or delete the previous installation.
+
+### Alternative: CLI installer
 
 Clone the repository and run the transparent CLI installer:
 
@@ -174,8 +201,6 @@ repository. No Homebrew or system Python installation is modified.
 For runtime-only, model-only, validation, repair, non-interactive, and custom
 location commands, see [installer/README.md](installer/README.md).
 
-The SwiftUI first-run installer is not implemented yet.
-
 ---
 
 ## Runtime configuration
@@ -188,7 +213,10 @@ LocalTranscriber supports two runtime modes.
 
 ### Automatic / Managed
 
-The CLI installer uses the app's managed runtime path-resolution architecture.
+The app validates the managed Runtime and model on launch. Missing components
+open the setup flow; an incomplete Runtime offers repair. Settings shows the
+status of Runtime, Python, FFmpeg, and the model, with actions to validate,
+repair, install the model, or reinstall only the Runtime.
 
 Default managed location:
 
@@ -204,10 +232,7 @@ Default managed location:
 └── Config/
 ```
 
-The current installer is command-line based. A SwiftUI first-run installer is
-planned for a future release.
-
-### Custom
+### Advanced: Custom runtime
 
 You can independently provide:
 
@@ -223,6 +248,10 @@ The model directory may point either to:
 - a model snapshot directly
 
 LocalTranscriber resolves the usable model snapshot automatically.
+
+Managed and Custom settings are stored independently. Installing or repairing
+the managed environment does not overwrite Custom Python, FFmpeg, or model
+paths, and switching between modes preserves both configurations.
 
 ---
 

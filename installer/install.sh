@@ -14,6 +14,10 @@ TEMP_DIR=""
 INSTALL_DIR_CREATED=0
 CLEANUP_ACTIVE=0
 LOCK_OWNED=0
+MACHINE_READABLE=0
+ACTIVE_CHILD_PID=""
+ERROR_EMITTED=0
+FORCE_RUNTIME=0
 
 usage() {
     cat <<'EOF'
@@ -21,9 +25,12 @@ Usage: ./installer/install.sh [options]
 
 Options:
   --yes                    Confirm downloads non-interactively.
+  --machine-readable       Emit newline-delimited JSON events on stdout.
   --runtime-only           Install and validate Runtime 1.0.0 only.
+  --reinstall-runtime      Reinstall Runtime 1.0.0 without changing the model.
   --model-only             Install the model using an existing valid runtime.
   --validate               Validate the existing managed environment; no downloads.
+  --quick-validate         Fast structural launch check; no downloads or model load.
   --repair                 Repair only missing or invalid managed components.
   --install-dir PATH       Use a custom managed installation directory.
   -h, --help               Show this help.
@@ -31,12 +38,70 @@ EOF
 }
 
 fail() {
-    echo "error: $*" >&2
+    local message="$1"
+    local code="${2:-installationFailed}"
+    if (( MACHINE_READABLE && ! ERROR_EMITTED )); then
+        emit_error "$code" "$message"
+        ERROR_EMITTED=1
+    fi
+    echo "error: $message" >&2
     exit 1
+}
+
+json_escape() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+    printf '%s' "$value"
+}
+
+emit_json() {
+    (( MACHINE_READABLE )) || return 0
+    printf '%s\n' "$1"
+}
+
+emit_phase() {
+    emit_json "{\"event\":\"phase\",\"id\":\"$(json_escape "$1")\",\"title\":\"$(json_escape "$2")\"}"
+}
+
+emit_status() {
+    emit_json "{\"event\":\"status\",\"component\":\"$(json_escape "$1")\",\"state\":\"$(json_escape "$2")\"}"
+}
+
+emit_component_event() {
+    emit_json "{\"event\":\"$(json_escape "$1")\",\"component\":\"$(json_escape "$2")\"}"
+}
+
+emit_progress() {
+    emit_json "{\"event\":\"downloadProgress\",\"component\":\"$(json_escape "$1")\",\"bytesDownloaded\":$2,\"bytesTotal\":$3}"
+}
+
+emit_download_start() {
+    emit_json "{\"event\":\"downloadStart\",\"component\":\"$(json_escape "$1")\",\"bytesTotal\":$2}"
+}
+
+emit_error() {
+    emit_json "{\"event\":\"error\",\"code\":\"$(json_escape "$1")\",\"message\":\"$(json_escape "$2")\"}"
+}
+
+emit_complete() {
+    emit_json "{\"event\":\"complete\",\"runtime\":$1,\"model\":$2}"
+}
+
+say() {
+    (( MACHINE_READABLE )) || printf '%s\n' "$*"
 }
 
 cleanup() {
     (( ${CLEANUP_ACTIVE:-0} )) || return 0
+    if [[ -n "$ACTIVE_CHILD_PID" ]]; then
+        kill "$ACTIVE_CHILD_PID" 2>/dev/null || true
+        wait "$ACTIVE_CHILD_PID" 2>/dev/null || true
+        ACTIVE_CHILD_PID=""
+    fi
     if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
         rm -rf "$TEMP_DIR"
     fi
@@ -64,7 +129,12 @@ cleanup() {
 }
 
 interrupted() {
-    echo >&2
+    if (( MACHINE_READABLE )); then
+        emit_error "cancelled" "Setup was cancelled. No incomplete component was installed."
+        ERROR_EMITTED=1
+    else
+        echo >&2
+    fi
     echo "Installation interrupted. The previous valid installation was preserved." >&2
     exit 130
 }
@@ -109,15 +179,47 @@ nearest_existing_directory() {
 confirm() {
     local prompt="$1" answer
     if (( ASSUME_YES )); then
-        echo "$prompt yes (--yes)"
+        (( MACHINE_READABLE )) || echo "$prompt yes (--yes)"
         return 0
     fi
+    (( MACHINE_READABLE )) && return 1
     printf '%s' "$prompt"
     IFS= read -r answer || answer=""
     case "$answer" in
         y|Y|yes|YES|Yes) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+file_size() {
+    [[ -f "$1" ]] && stat -f '%z' "$1" 2>/dev/null || printf '0\n'
+}
+
+directory_size() {
+    [[ -d "$1" ]] && du -sk "$1" 2>/dev/null | awk '{ print $1 * 1024 }' || printf '0\n'
+}
+
+download_runtime_archive() {
+    local destination="$1"
+    if (( ! MACHINE_READABLE )); then
+        curl --fail --location --retry 3 --retry-delay 2 --output "$destination" "$RUNTIME_URL"
+        return
+    fi
+
+    emit_download_start "runtime" "$RUNTIME_DOWNLOAD_BYTES"
+    curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
+        --output "$destination" "$RUNTIME_URL" &
+    ACTIVE_CHILD_PID=$!
+    while kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; do
+        emit_progress "runtime" "$(file_size "$destination")" "$RUNTIME_DOWNLOAD_BYTES"
+        sleep 0.25
+    done
+    local result=0
+    wait "$ACTIVE_CHILD_PID" || result=$?
+    ACTIVE_CHILD_PID=""
+    (( result == 0 )) || return "$result"
+    emit_progress "runtime" "$(file_size "$destination")" "$RUNTIME_DOWNLOAD_BYTES"
+    emit_component_event "downloadComplete" "runtime"
 }
 
 format_mib() {
@@ -166,7 +268,7 @@ check_disk_space() {
     (( needed > 0 )) || return 0
     available="$(available_bytes)"
     [[ "$available" =~ ^[0-9]+$ ]] || fail "Could not determine free disk space."
-    (( available >= needed )) || fail "Insufficient free disk space: need approximately $(format_mib "$needed") MiB, have $(format_mib "$available") MiB."
+    (( available >= needed )) || fail "Insufficient free disk space: need approximately $(format_mib "$needed") MiB, have $(format_mib "$available") MiB." "insufficientDiskSpace"
 }
 
 recover_interrupted_swaps() {
@@ -184,7 +286,11 @@ recover_interrupted_swaps() {
 }
 
 validate_runtime_at() {
-    "$RUNTIME_VALIDATOR" "$1"
+    if (( MACHINE_READABLE )); then
+        "$RUNTIME_VALIDATOR" "$1" 1>&2
+    else
+        "$RUNTIME_VALIDATOR" "$1"
+    fi
 }
 
 runtime_is_valid() {
@@ -231,13 +337,31 @@ mx.eval(model.parameters())
 tokenizer = get_tokenizer(multilingual=True, language="en", task="transcribe")
 if not tokenizer.encode("LocalTranscriber"):
     raise SystemExit("model validation failed: tokenizer support is unavailable")
-print(f"Model revision {revision}: OK")
+print(f"Model revision {revision}: OK", file=sys.stderr)
 PY
 }
 
 model_is_valid() {
     [[ -d "$MODEL_SNAPSHOT_DIR" ]] || return 1
     validate_model_snapshot "$MODEL_SNAPSHOT_DIR" >/dev/null 2>&1
+}
+
+model_is_quickly_valid() {
+    local snapshot="$MODEL_SNAPSHOT_DIR"
+    local config="$snapshot/config.json"
+    local weights="$snapshot/weights.safetensors"
+    [[ -d "$snapshot" && -f "$config" && -f "$weights" ]] || return 1
+    [[ "$(basename "$snapshot")" == "$MODEL_REVISION" ]] || return 1
+    local weight_size
+    weight_size="$(wc -c < "$weights" 2>/dev/null | tr -d '[:space:]' || printf '0')"
+    [[ "$weight_size" =~ ^[0-9]+$ ]] && (( weight_size >= 1000000000 )) || return 1
+    "$MANAGED_PYTHON" -c '
+import json, sys
+config = json.load(open(sys.argv[1], encoding="utf-8"))
+required = {"n_mels", "n_audio_ctx", "n_audio_state", "n_audio_head", "n_audio_layer", "n_vocab", "n_text_ctx", "n_text_state", "n_text_head", "n_text_layer"}
+if required.difference(config):
+    raise SystemExit(1)
+' "$config" >/dev/null 2>&1 || return 1
 }
 
 install_runtime() {
@@ -247,11 +371,12 @@ install_runtime() {
     local backup="$INSTALL_DIR/.previous-runtime"
     local manifest_backup="$INSTALL_DIR/.previous-runtime-manifest.json"
 
-    echo
-    echo "Downloading Runtime $RUNTIME_VERSION from GitHub Release $RUNTIME_RELEASE_TAG..."
-    curl --fail --location --retry 3 --retry-delay 2 --output "$archive" "$RUNTIME_URL" \
-        || fail "Runtime download failed. No installed runtime was changed."
+    say
+    say "Downloading Runtime $RUNTIME_VERSION from GitHub Release $RUNTIME_RELEASE_TAG..."
+    download_runtime_archive "$archive" \
+        || fail "Runtime download failed. No installed runtime was changed." "runtimeDownloadFailed"
 
+    emit_component_event "verifyStart" "runtime"
     local actual_sha
     actual_sha="$(shasum -a 256 "$archive" | awk '{print $1}')"
     if [[ "$actual_sha" != "$RUNTIME_SHA256" ]]; then
@@ -259,20 +384,24 @@ install_runtime() {
         echo "SECURITY / INTEGRITY ERROR: Runtime SHA-256 mismatch." >&2
         echo "Expected: $RUNTIME_SHA256" >&2
         echo "Received: $actual_sha" >&2
-        fail "The downloaded archive was deleted and nothing was installed."
+        fail "The downloaded Runtime failed verification and was not installed." "checksumMismatch"
     fi
+    emit_component_event "verifyComplete" "runtime"
 
+    emit_component_event "installStart" "runtime"
     mkdir -p "$extract_dir"
     tar -xzf "$archive" -C "$extract_dir" \
-        || fail "Runtime extraction failed. The previous runtime was preserved."
+        || fail "Runtime extraction failed. The previous runtime was preserved." "runtimeExtractionFailed"
     [[ -d "$extract_dir/LocalTranscriber/Runtime" ]] \
-        || fail "Runtime archive has an unexpected structure."
+        || fail "Runtime archive has an unexpected structure." "runtimeArchiveInvalid"
 
     rm -rf "$stage"
     mv "$extract_dir/LocalTranscriber" "$stage"
     cp "$MANIFEST" "$stage/runtime-manifest.json"
+    emit_json '{"event":"validationStart","component":"runtime"}'
     validate_runtime_at "$stage" \
-        || fail "Staged Runtime validation failed. The previous runtime was preserved."
+        || fail "Staged Runtime validation failed. The previous runtime was preserved." "runtimeValidationFailed"
+    emit_json '{"event":"validationComplete","component":"runtime"}'
 
     rm -rf "$backup"
     rm -f "$manifest_backup"
@@ -289,7 +418,7 @@ install_runtime() {
         rm -f "$INSTALL_DIR/runtime-manifest.json"
         [[ -d "$backup" ]] && mv "$backup" "$INSTALL_DIR/Runtime"
         [[ -f "$manifest_backup" ]] && mv "$manifest_backup" "$INSTALL_DIR/runtime-manifest.json"
-        fail "Atomic Runtime installation failed; the previous runtime was restored."
+        fail "Atomic Runtime installation failed; the previous runtime was restored." "runtimeInstallFailed"
     fi
 
     mkdir -p "$INSTALL_DIR/Models"
@@ -298,12 +427,13 @@ install_runtime() {
         rm -f "$INSTALL_DIR/runtime-manifest.json"
         [[ -d "$backup" ]] && mv "$backup" "$INSTALL_DIR/Runtime"
         [[ -f "$manifest_backup" ]] && mv "$manifest_backup" "$INSTALL_DIR/runtime-manifest.json"
-        fail "Installed Runtime failed validation; the previous runtime was restored."
+        fail "Installed Runtime failed validation; the previous runtime was restored." "runtimeValidationFailed"
     fi
 
     rm -rf "$backup" "$stage"
     rm -f "$manifest_backup"
-    echo "Runtime $RUNTIME_VERSION installed and validated."
+    emit_component_event "installComplete" "runtime"
+    say "Runtime $RUNTIME_VERSION installed and validated."
 }
 
 download_model() {
@@ -315,9 +445,34 @@ download_model() {
     rm -rf "$stage"
     mkdir -p "$stage"
 
-    echo
-    echo "Downloading $MODEL_REPO at pinned revision $MODEL_REVISION from Hugging Face..."
-    "$MANAGED_PYTHON" - "$MODEL_REPO" "$MODEL_REVISION" "$stage" <<'PY'
+    say
+    say "Downloading $MODEL_REPO at pinned revision $MODEL_REVISION from Hugging Face..."
+    emit_download_start "model" "$MODEL_DOWNLOAD_BYTES"
+    if (( MACHINE_READABLE )); then
+        HF_HUB_DISABLE_PROGRESS_BARS=1 "$MANAGED_PYTHON" - "$MODEL_REPO" "$MODEL_REVISION" "$stage" <<'PY' &
+import sys
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+repo, revision, cache_dir = sys.argv[1:]
+snapshot = Path(snapshot_download(repo_id=repo, revision=revision, cache_dir=cache_dir))
+if snapshot.name != revision:
+    raise SystemExit(f"Hugging Face resolved unexpected revision: {snapshot.name}")
+print(snapshot, file=sys.stderr)
+PY
+        ACTIVE_CHILD_PID=$!
+        while kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; do
+            emit_progress "model" "$(directory_size "$stage")" "$MODEL_DOWNLOAD_BYTES"
+            sleep 0.25
+        done
+        local download_result=0
+        wait "$ACTIVE_CHILD_PID" || download_result=$?
+        ACTIVE_CHILD_PID=""
+        (( download_result == 0 )) || fail "Unable to download the Whisper model." "modelDownloadFailed"
+        emit_progress "model" "$(directory_size "$stage")" "$MODEL_DOWNLOAD_BYTES"
+        emit_component_event "downloadComplete" "model"
+    else
+        "$MANAGED_PYTHON" - "$MODEL_REPO" "$MODEL_REVISION" "$stage" <<'PY'
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
@@ -328,11 +483,15 @@ if snapshot.name != revision:
     raise SystemExit(f"Hugging Face resolved unexpected revision: {snapshot.name}")
 print(snapshot)
 PY
+    fi
 
-    [[ -d "$staged_snapshot" ]] || fail "The downloaded model does not contain the pinned snapshot."
+    [[ -d "$staged_snapshot" ]] || fail "The downloaded model does not contain the pinned snapshot." "modelDownloadIncomplete"
+    emit_json '{"event":"validationStart","component":"model"}'
     validate_model_snapshot "$staged_snapshot" \
-        || fail "Staged model validation failed. The previous model was preserved."
+        || fail "Staged model validation failed. The previous model was preserved." "modelValidationFailed"
+    emit_json '{"event":"validationComplete","component":"model"}'
 
+    emit_component_event "installStart" "model"
     mkdir -p "$INSTALL_DIR/Models"
     rm -rf "$backup"
     if [[ -d "$MODEL_REPOSITORY_DIR" ]]; then
@@ -340,20 +499,22 @@ PY
     fi
     if ! mv "$staged_repository" "$MODEL_REPOSITORY_DIR"; then
         [[ -d "$backup" ]] && mv "$backup" "$MODEL_REPOSITORY_DIR"
-        fail "Atomic model installation failed; the previous model was restored."
+        fail "Atomic model installation failed; the previous model was restored." "modelInstallFailed"
     fi
 
     if ! validate_model_snapshot "$MODEL_SNAPSHOT_DIR"; then
         rm -rf "$MODEL_REPOSITORY_DIR"
         [[ -d "$backup" ]] && mv "$backup" "$MODEL_REPOSITORY_DIR"
-        fail "Installed model failed validation; the previous model was restored."
+        fail "Installed model failed validation; the previous model was restored." "modelValidationFailed"
     fi
 
     rm -rf "$backup" "$stage"
-    echo "Whisper Large v3 Turbo installed and validated."
+    emit_component_event "installComplete" "model"
+    say "Whisper Large v3 Turbo installed and validated."
 }
 
 print_plan() {
+    (( MACHINE_READABLE )) && return 0
     echo
     echo "LocalTranscriber Setup"
     echo
@@ -387,6 +548,12 @@ print_plan() {
 }
 
 print_success() {
+    if (( MACHINE_READABLE )); then
+        local model_ready=false
+        model_is_valid && model_ready=true
+        emit_complete true "$model_ready"
+        return 0
+    fi
     echo
     echo "LocalTranscriber Setup"
     echo
@@ -411,9 +578,15 @@ print_success() {
 while (( $# > 0 )); do
     case "$1" in
         --yes) ASSUME_YES=1 ;;
-        --runtime-only|--model-only|--validate|--repair)
+        --machine-readable) MACHINE_READABLE=1 ;;
+        --runtime-only|--model-only|--validate|--quick-validate|--repair)
             [[ "$MODE" == "full" ]] || fail "Only one installation mode may be selected."
             MODE="${1#--}"
+            ;;
+        --reinstall-runtime)
+            [[ "$MODE" == "full" ]] || fail "Only one installation mode may be selected."
+            MODE="runtime-only"
+            FORCE_RUNTIME=1
             ;;
         --install-dir)
             shift
@@ -450,16 +623,10 @@ MODEL_REPOSITORY_DIR="$INSTALL_DIR/Models/$MODEL_CACHE_DIRECTORY"
 MODEL_SNAPSHOT_DIR="$MODEL_REPOSITORY_DIR/snapshots/$MODEL_REVISION"
 MANAGED_PYTHON="$INSTALL_DIR/Runtime/Environment/bin/python3"
 
+emit_phase "preflight" "Checking system and destination"
 check_platform_and_tools
 check_destination
-
-if [[ "$MODE" == "validate" ]]; then
-    [[ -d "$INSTALL_DIR" ]] || fail "Managed installation is missing: $INSTALL_DIR"
-    validate_runtime_at "$INSTALL_DIR"
-    validate_model_snapshot "$MODEL_SNAPSHOT_DIR"
-    print_success
-    exit 0
-fi
+emit_phase "preflightComplete" "System and destination are ready"
 
 recover_interrupted_swaps
 
@@ -467,7 +634,37 @@ RUNTIME_VALID=0
 MODEL_VALID=0
 runtime_is_valid && RUNTIME_VALID=1
 if [[ -x "$MANAGED_PYTHON" ]]; then
-    model_is_valid && MODEL_VALID=1
+    if [[ "$MODE" == "quick-validate" ]]; then
+        model_is_quickly_valid && MODEL_VALID=1
+    else
+        model_is_valid && MODEL_VALID=1
+    fi
+fi
+
+RUNTIME_STATE="missing"
+MODEL_STATE="missing"
+if [[ -d "$INSTALL_DIR/Runtime" || -f "$INSTALL_DIR/runtime-manifest.json" ]]; then
+    RUNTIME_STATE="invalid"
+fi
+(( RUNTIME_VALID )) && RUNTIME_STATE="ready"
+if [[ -d "$MODEL_REPOSITORY_DIR" ]]; then
+    MODEL_STATE="invalid"
+fi
+(( MODEL_VALID )) && MODEL_STATE="ready"
+emit_status "runtime" "$RUNTIME_STATE"
+emit_status "model" "$MODEL_STATE"
+
+if [[ "$MODE" == "validate" || "$MODE" == "quick-validate" ]]; then
+    emit_json '{"event":"validationStart"}'
+    (( RUNTIME_VALID )) || fail "Managed Runtime is $RUNTIME_STATE." "runtimeValidationFailed"
+    (( MODEL_VALID )) || fail "Whisper model is $MODEL_STATE." "modelValidationFailed"
+    emit_json '{"event":"validationComplete"}'
+    if [[ "$MODE" == "quick-validate" && "$MACHINE_READABLE" -eq 1 ]]; then
+        emit_complete true true
+    else
+        print_success
+    fi
+    exit 0
 fi
 
 WANT_RUNTIME=1
@@ -487,6 +684,7 @@ NEED_RUNTIME=0
 NEED_MODEL=0
 (( WANT_RUNTIME && ! RUNTIME_VALID )) && NEED_RUNTIME=1
 (( WANT_MODEL && ! MODEL_VALID )) && NEED_MODEL=1
+(( FORCE_RUNTIME )) && NEED_RUNTIME=1
 
 print_plan
 
@@ -500,8 +698,12 @@ DISK_REQUIRED=0
 (( NEED_MODEL )) && DISK_REQUIRED=$((DISK_REQUIRED + MODEL_DOWNLOAD_BYTES + 536870912))
 check_disk_space "$DISK_REQUIRED"
 
+if (( MACHINE_READABLE && ! ASSUME_YES )); then
+    fail "Machine-readable installation requires explicit --yes consent." "consentRequired"
+fi
+
 if ! confirm "Continue? [y/N] "; then
-    echo "Installation cancelled. Nothing was downloaded or changed."
+    say "Installation cancelled. Nothing was downloaded or changed."
     exit 0
 fi
 
@@ -525,24 +727,26 @@ fi
 if (( NEED_MODEL )); then
     if model_is_valid; then
         NEED_MODEL=0
-        echo "Existing Whisper model is valid; no model download is needed."
+        say "Existing Whisper model is valid; no model download is needed."
     fi
 fi
 
 if (( NEED_MODEL )); then
-    echo
-    echo "Whisper Large v3 Turbo is not installed."
+    say
+    say "Whisper Large v3 Turbo is not installed."
     if confirm "Download approximately 1.6 GB from Hugging Face now? [y/N] "; then
         download_model
     else
-        echo "Runtime is installed. The model can be installed later with --model-only."
+        say "Runtime is installed. The model can be installed later with --model-only."
         print_success
         exit 0
     fi
 fi
 
+emit_json '{"event":"validationStart"}'
 validate_runtime_at "$INSTALL_DIR"
 if (( WANT_MODEL )); then
     validate_model_snapshot "$MODEL_SNAPSHOT_DIR"
 fi
+emit_json '{"event":"validationComplete"}'
 print_success

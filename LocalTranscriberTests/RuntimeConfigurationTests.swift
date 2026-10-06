@@ -22,6 +22,21 @@ final class RuntimeConfigurationTests: XCTestCase {
         XCTAssertEqual(paths.modelDirectoryURL.path, "/tmp/Application Support/LocalTranscriber/Models")
     }
 
+    func testManagedRuntimeUsesRememberedCustomInstallLocation() {
+        let paths = RuntimePathResolver(applicationSupportDirectory: support).resolve(
+            RuntimeConfiguration(
+                mode: .managed,
+                customPythonPath: "/custom/python",
+                customFFmpegPath: "/custom/ffmpeg",
+                customModelPath: "/custom/models",
+                managedInstallPath: "/Volumes/External SSD/LocalTranscriber"
+            )
+        )
+
+        XCTAssertEqual(paths.runtimeDirectoryURL.path, "/Volumes/External SSD/LocalTranscriber/Runtime")
+        XCTAssertEqual(paths.modelDirectoryURL.path, "/Volumes/External SSD/LocalTranscriber/Models")
+    }
+
     func testCustomRuntimeAllowsIndependentOverrides() {
         let paths = RuntimePathResolver(applicationSupportDirectory: support).resolve(
             RuntimeConfiguration(

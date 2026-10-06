@@ -3,7 +3,13 @@ import AppKit
 
 struct SettingsView: View {
     @StateObject private var s = SettingsStore.shared
+    @ObservedObject var managedRuntime: ManagedRuntimeSetupModel
     @State private var configStatus = ""
+    @State private var showReinstallConfirmation = false
+
+    private var managedInstallDirectory: URL {
+        s.resolvedRuntimePaths.runtimeDirectoryURL.deletingLastPathComponent()
+    }
 
     var body: some View {
         Form {
@@ -27,14 +33,51 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
 
                 if s.runtimeMode == .managed {
-                    managedPathRow(s.tr("Python", "Python"), url: s.resolvedRuntimePaths.pythonExecutableURL)
-                    managedPathRow("FFmpeg", url: s.resolvedRuntimePaths.ffmpegExecutableURL)
-                    managedPathRow(s.tr("Model Whisper", "Whisper model"), url: s.resolvedRuntimePaths.modelDirectoryURL)
-                    Text(s.tr(
-                        "Automatyczna instalacja nie jest jeszcze dostępna. Do czasu jej dodania wybierz tryb Własny i wskaż istniejące składniki.",
-                        "Automatic installation is not available yet. Until it is added, choose Custom and select existing components."
-                    ))
-                    .font(AppTheme.secondaryFont).foregroundStyle(.secondary)
+                    managedStatusRow("Runtime \(managedRuntime.manifest?.runtimeVersion ?? "1.0.0")", state: managedRuntime.state.status.runtime)
+                    managedStatusRow(s.tr("Python", "Python"), state: managedRuntime.state.status.runtime)
+                    managedStatusRow("FFmpeg", state: managedRuntime.state.status.runtime)
+                    managedStatusRow(s.tr("Model Whisper", "Whisper model"), state: managedRuntime.state.status.model)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(s.tr("Lokalizacja instalacji", "Installation location"))
+                            Spacer()
+                            Button(s.tr("Zmień…", "Change…"), action: chooseManagedInstallDirectory)
+                        }
+                        Text(managedInstallDirectory.path)
+                            .font(AppTheme.secondaryFont).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(s.tr(
+                            "Zmiana lokalizacji nie przenosi ani nie usuwa istniejących danych. Składniki trzeba zainstalować w nowym miejscu.",
+                            "Changing the location does not move or delete existing data. Components must be installed in the new location."
+                        ))
+                        .font(AppTheme.secondaryFont).foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Button(s.tr("Sprawdź", "Validate")) {
+                            managedRuntime.inspect(installDirectory: managedInstallDirectory, mode: .managed)
+                        }
+                        Button(s.tr("Napraw", "Repair")) {
+                            managedRuntime.start(.repair, installDirectory: managedInstallDirectory)
+                        }
+                        .disabled(managedRuntime.state.phase.isRunning)
+                        Button(s.tr("Zainstaluj model", "Install Model")) {
+                            managedRuntime.start(.modelOnly, installDirectory: managedInstallDirectory)
+                        }
+                        .disabled(managedRuntime.state.status.runtime != .ready || managedRuntime.state.phase.isRunning)
+                        Button(s.tr("Przeinstaluj Runtime", "Reinstall Runtime")) {
+                            showReinstallConfirmation = true
+                        }
+                        .disabled(managedRuntime.state.phase.isRunning)
+                    }
+                    if managedRuntime.state.phase.isRunning {
+                        HStack {
+                            ProgressView(value: managedRuntime.state.progressFraction)
+                            Text(managedRuntime.state.currentMessage).foregroundStyle(.secondary)
+                            Button(s.tr("Anuluj", "Cancel")) { managedRuntime.cancel() }
+                        }
+                    }
                 } else {
                     pathRow(s.tr("Python", "Python"), text: $s.pythonPath, automaticURL: RuntimePathResolver().resolve(RuntimeConfiguration(mode: .managed, customPythonPath: "", customFFmpegPath: "", customModelPath: "")).pythonExecutableURL, chooseDirectory: false)
                     pathRow("FFmpeg", text: $s.ffmpegPath, automaticURL: RuntimePathResolver().resolve(RuntimeConfiguration(mode: .managed, customPythonPath: "", customFFmpegPath: "", customModelPath: "")).ffmpegExecutableURL, chooseDirectory: false)
@@ -89,15 +132,66 @@ struct SettingsView: View {
         .padding(8)
         .frame(minWidth: 740, minHeight: 650)
         .navigationTitle("LocalTranscriber")
+        .confirmationDialog(
+            s.tr("Przeinstalować Runtime?", "Reinstall Runtime?"),
+            isPresented: $showReinstallConfirmation
+        ) {
+            Button(s.tr("Przeinstaluj Runtime", "Reinstall Runtime")) {
+                managedRuntime.start(.reinstallRuntime, installDirectory: managedInstallDirectory)
+            }
+            Button(s.tr("Anuluj", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(s.tr(
+                "Runtime zostanie ponownie pobrany z GitHub i atomowo zastąpiony. Model oraz ustawienia Custom pozostaną bez zmian.",
+                "Runtime will be downloaded again from GitHub and replaced atomically. The model and Custom settings remain unchanged."
+            ))
+        }
+        .onChange(of: s.runtimeMode) { _, mode in
+            if mode == .managed {
+                managedRuntime.inspect(installDirectory: managedInstallDirectory, mode: mode)
+            }
+        }
     }
 
-    @ViewBuilder private func managedPathRow(_ title: String, url: URL) -> some View {
+    @ViewBuilder private func managedStatusRow(_ title: String, state: ManagedComponentState) -> some View {
         LabeledContent(title) {
-            Text(s.tr("Automatycznie", "Automatic") + " — " + url.path)
-                .font(AppTheme.bodyFont)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            Label(statusText(state), systemImage: statusSymbol(state))
+                .foregroundStyle(state == .ready ? .green : state == .invalid ? .orange : .secondary)
+        }
+    }
+
+    private func statusText(_ state: ManagedComponentState) -> String {
+        switch state {
+        case .ready: return s.tr("Gotowe", "Ready")
+        case .missing: return s.tr("Brak", "Missing")
+        case .invalid: return s.tr("Niepoprawne", "Invalid")
+        case .unknown: return s.tr("Nie sprawdzono", "Not checked")
+        }
+    }
+
+    private func statusSymbol(_ state: ManagedComponentState) -> String {
+        switch state {
+        case .ready: return "checkmark.circle.fill"
+        case .invalid: return "exclamationmark.triangle.fill"
+        case .missing: return "minus.circle"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private func chooseManagedInstallDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = s.tr(
+            "Wybierz nowy katalog danych. Istniejąca instalacja nie zostanie przeniesiona ani usunięta.",
+            "Choose a new data directory. The existing installation will not be moved or deleted."
+        )
+        panel.directoryURL = managedInstallDirectory.deletingLastPathComponent()
+        if panel.runModal() == .OK, let url = panel.url {
+            s.managedInstallPath = url.path
+            managedRuntime.inspect(installDirectory: url, mode: .managed)
         }
     }
 

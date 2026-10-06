@@ -14,6 +14,7 @@ struct RuntimeConfiguration: Equatable, Sendable {
     var customPythonPath: String
     var customFFmpegPath: String
     var customModelPath: String
+    var managedInstallPath: String = ""
 }
 
 struct ResolvedRuntimePaths: Equatable, Sendable {
@@ -38,8 +39,11 @@ struct RuntimePathResolver {
     }
 
     func resolve(_ configuration: RuntimeConfiguration) -> ResolvedRuntimePaths {
-        let appDirectory = applicationSupportDirectory
-            .appendingPathComponent("LocalTranscriber", isDirectory: true)
+        let configuredManagedPath = configuration.managedInstallPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let appDirectory = configuredManagedPath.isEmpty
+            ? applicationSupportDirectory.appendingPathComponent("LocalTranscriber", isDirectory: true)
+            : URL(fileURLWithPath: (configuredManagedPath as NSString).expandingTildeInPath, isDirectory: true)
         let runtimeDirectory = appDirectory.appendingPathComponent("Runtime", isDirectory: true)
         let managedPython = runtimeDirectory
             .appendingPathComponent("Environment", isDirectory: true)

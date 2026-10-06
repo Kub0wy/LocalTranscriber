@@ -83,6 +83,8 @@ final class TranscriptionProgress: ObservableObject {
 }
 
 struct ContentView: View {
+    @ObservedObject var managedRuntime: ManagedRuntimeSetupModel
+    let showManagedSetup: () -> Void
     @StateObject private var settings = SettingsStore.shared
     @StateObject private var progress = TranscriptionProgress()
     @State private var source: URL?
@@ -283,7 +285,13 @@ struct ContentView: View {
 
     private var statusBar: some View {
         HStack(spacing: AppTheme.compactSpacing) {
-            Text(status).foregroundStyle(.secondary)
+            if settings.runtimeMode == .managed && !managedRuntime.state.status.isReady {
+                Text(settings.tr("Środowisko zarządzane nie jest gotowe.", "Managed runtime is not ready."))
+                    .foregroundStyle(.orange)
+                Button(settings.tr("Skonfiguruj", "Set Up"), action: showManagedSetup)
+            } else {
+                Text(status).foregroundStyle(.secondary)
+            }
             Spacer()
             if busy {
                 Button(settings.tr("ANULUJ", "CANCEL"), action: cancelTranscription)
@@ -291,7 +299,7 @@ struct ContentView: View {
             }
             Button(settings.tr("TRANSKRYBUJ", "TRANSCRIBE"), action: startTranscription)
                 .buttonStyle(.borderedProminent)
-                .disabled(source == nil || busy)
+                .disabled(source == nil || busy || (settings.runtimeMode == .managed && !managedRuntime.state.status.isReady))
         }
         .padding(.horizontal, AppTheme.spacing)
         .frame(height: AppTheme.footerHeight)
@@ -327,6 +335,10 @@ struct ContentView: View {
     private func chooseDestination() { let p = NSOpenPanel(); p.canChooseFiles = false; p.canChooseDirectories = true; if p.runModal() == .OK { destination = p.url } }
 
     private func startTranscription() {
+        guard settings.runtimeMode == .custom || managedRuntime.state.status.isReady else {
+            showManagedSetup()
+            return
+        }
         guard transcriptionTask == nil, !busy else { return }
         let task = Task { await run() }
         transcriptionTask = task

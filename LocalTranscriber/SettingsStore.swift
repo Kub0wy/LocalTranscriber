@@ -42,6 +42,7 @@ final class SettingsStore: ObservableObject {
     @Published var modelPath: String { didSet { save() } }
     @Published var pythonPath: String { didSet { save() } }
     @Published var ffmpegPath: String { didSet { save() } }
+    @Published var managedInstallPath: String { didSet { save() } }
     @Published var transcriptionConfig: String { didSet { save() } }
     @Published var interfaceLanguage: String { didSet { save() } }
 
@@ -53,7 +54,8 @@ final class SettingsStore: ObservableObject {
             mode: runtimeMode,
             customPythonPath: pythonPath,
             customFFmpegPath: ffmpegPath,
-            customModelPath: modelPath
+            customModelPath: modelPath,
+            managedInstallPath: managedInstallPath
         )
     }
 
@@ -72,6 +74,7 @@ final class SettingsStore: ObservableObject {
         modelPath = existingModelPath
         pythonPath = existingPythonPath
         ffmpegPath = existingFFmpegPath
+        managedInstallPath = d.string(forKey: "managedInstallPath") ?? ""
         transcriptionConfig = d.string(forKey: "transcriptionConfig") ?? Self.defaultTranscriptionConfig
         interfaceLanguage = d.string(forKey: "interfaceLanguage") ?? Self.defaultInterfaceLanguage
     }
@@ -92,6 +95,7 @@ final class SettingsStore: ObservableObject {
         d.set(runtimeMode.rawValue, forKey: "runtimeMode")
         d.set(modelPath, forKey: "modelPath"); d.set(pythonPath, forKey: "pythonPath")
         d.set(ffmpegPath, forKey: "ffmpegPath"); d.set(transcriptionConfig, forKey: "transcriptionConfig")
+        d.set(managedInstallPath, forKey: "managedInstallPath")
         d.set(interfaceLanguage, forKey: "interfaceLanguage")
     }
 }
