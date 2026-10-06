@@ -158,7 +158,23 @@ LocalTranscriber requires:
 - **macOS 14 or later**
 - **Apple Silicon**
 
-### Recommended: app-managed setup
+### Recommended: application + app-managed setup
+
+> **Unsigned / non-notarized build:** LocalTranscriber 1.0.4 is distributed
+> without an Apple Developer ID signature and has not been notarized by Apple.
+
+1. Download `LocalTranscriber-1.0.4-macos-arm64.dmg` from GitHub Releases.
+2. Open the DMG and drag **LocalTranscriber** to **Applications**.
+3. Open LocalTranscriber from Applications.
+4. If macOS blocks the first launch, open **System Settings → Privacy &
+   Security**, locate the LocalTranscriber security message, click **Open
+   Anyway**, then confirm **Open**. Depending on the macOS version, you may also
+   Control-click or right-click LocalTranscriber in Finder, choose **Open**, and
+   confirm **Open**.
+5. Approve the Runtime and model installation inside LocalTranscriber.
+
+Do not disable Gatekeeper globally. These steps approve this specific copy of
+LocalTranscriber while leaving normal macOS security protections enabled.
 
 On first launch, choose **Automatic / Managed** and let the native setup screen
 install the required components. Before any network access, LocalTranscriber
