@@ -160,10 +160,10 @@ LocalTranscriber requires:
 
 ### Recommended: application + app-managed setup
 
-> **Unsigned / non-notarized build:** LocalTranscriber 1.0.4 is distributed
+> **Unsigned / non-notarized build:** LocalTranscriber 1.0.5 is distributed
 > without an Apple Developer ID signature and has not been notarized by Apple.
 
-1. Download `LocalTranscriber-1.0.4-macos-arm64.dmg` from GitHub Releases.
+1. Download `LocalTranscriber-1.0.5-macos-arm64.dmg` from GitHub Releases.
 2. Open the DMG and drag **LocalTranscriber** to **Applications**.
 3. Open LocalTranscriber from Applications.
 4. If macOS blocks the first launch, open **System Settings → Privacy &
@@ -577,5 +577,6 @@ If it saves you time and you would like to support continued development:
 
 ## Version
 
-Current marketing version: **1.0.4**  
+Current marketing version: **1.0.5**
+
 Build: **1**

@@ -4,7 +4,7 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-readonly VERSION="1.0.4"
+readonly VERSION="1.0.5"
 readonly PRODUCT_NAME="LocalTranscriber"
 readonly BUILD_DIR="$PROJECT_ROOT/release-build"
 readonly DERIVED_DATA_DIR="$BUILD_DIR/DerivedData"
@@ -54,8 +54,9 @@ verify_app() {
 }
 
 printf 'Building clean Release application...\n'
-rm -rf "$BUILD_DIR" "$DIST_DIR"
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
+rm -f "$DMG_PATH" "$ZIP_PATH" "$CHECKSUM_PATH"
 
 xcodebuild \
     -project "$PROJECT_ROOT/LocalTranscriber.xcodeproj" \
