@@ -118,7 +118,7 @@ func writePDF(title: String, text: String, to url: URL, polishInterface: Bool = 
     let document = NSMutableAttributedString(string: "")
     let titleStyle: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 17, weight: .semibold),
-        .foregroundColor: NSColor.textColor
+        .foregroundColor: NSColor.black
     ]
     let bodyParagraphStyle = NSMutableParagraphStyle()
     bodyParagraphStyle.alignment = .justified
@@ -126,7 +126,7 @@ func writePDF(title: String, text: String, to url: URL, polishInterface: Bool = 
 
     let bodyStyle: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: bodyFontSize, weight: .regular),
-        .foregroundColor: NSColor.textColor,
+        .foregroundColor: NSColor.black,
         .paragraphStyle: bodyParagraphStyle
     ]
     document.append(NSAttributedString(string: title.trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n", attributes: titleStyle))
@@ -163,7 +163,7 @@ func writePDF(title: String, text: String, to url: URL, polishInterface: Bool = 
             string: (polishInterface ? "Strona " : "Page ") + "\(pageNumber)",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 9),
-                .foregroundColor: NSColor.secondaryLabelColor
+                .foregroundColor: NSColor(calibratedWhite: 0.4, alpha: 1)
             ]
         )
         let footerLine = CTLineCreateWithAttributedString(footerText as CFAttributedString)

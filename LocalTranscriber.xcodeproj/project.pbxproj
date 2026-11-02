@@ -23,6 +23,7 @@
 		A20000000000000000000001 /* TranscriptionCancellationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* TranscriptionCancellationTests.swift */; };
 		A20000000000000000000002 /* RuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* RuntimeConfigurationTests.swift */; };
 		A20000000000000000000003 /* ManagedRuntimeSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* ManagedRuntimeSetupTests.swift */; };
+		A20000000000000000000004 /* PDFExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* PDFExportTests.swift */; };
 		A30000000000000000000001 /* install.sh in Copy Installer */ = {isa = PBXBuildFile; fileRef = B30000000000000000000001 /* install.sh */; };
 		A30000000000000000000002 /* runtime-manifest.json in Copy Installer */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* runtime-manifest.json */; };
 		A30000000000000000000003 /* validate_runtime.sh in Copy Installer */ = {isa = PBXBuildFile; fileRef = B30000000000000000000003 /* validate_runtime.sh */; };
@@ -53,6 +54,7 @@
 		B20000000000000000000002 /* LocalTranscriberTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LocalTranscriberTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000003 /* RuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000004 /* ManagedRuntimeSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedRuntimeSetupTests.swift; sourceTree = "<group>"; };
+		B20000000000000000000005 /* PDFExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExportTests.swift; sourceTree = "<group>"; };
 		B30000000000000000000001 /* install.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = installer/install.sh; sourceTree = SOURCE_ROOT; };
 		B30000000000000000000002 /* runtime-manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = runtime-manifest.json; sourceTree = SOURCE_ROOT; };
 		B30000000000000000000003 /* validate_runtime.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/validate_runtime.sh; sourceTree = SOURCE_ROOT; };
@@ -89,7 +91,7 @@
 			B10000000000000000000009 /* Assets.xcassets */,
 		); path = LocalTranscriber; sourceTree = "<group>"; };
 		D10000000000000000000003 /* Products */ = {isa = PBXGroup; children = (B10000000000000000000008 /* LocalTranscriber.app */, B20000000000000000000002 /* LocalTranscriberTests.xctest */); name = Products; sourceTree = "<group>"; };
-		D20000000000000000000001 /* LocalTranscriberTests */ = {isa = PBXGroup; children = (B20000000000000000000001 /* TranscriptionCancellationTests.swift */, B20000000000000000000003 /* RuntimeConfigurationTests.swift */, B20000000000000000000004 /* ManagedRuntimeSetupTests.swift */); path = LocalTranscriberTests; sourceTree = "<group>"; };
+		D20000000000000000000001 /* LocalTranscriberTests */ = {isa = PBXGroup; children = (B20000000000000000000001 /* TranscriptionCancellationTests.swift */, B20000000000000000000003 /* RuntimeConfigurationTests.swift */, B20000000000000000000004 /* ManagedRuntimeSetupTests.swift */, B20000000000000000000005 /* PDFExportTests.swift */); path = LocalTranscriberTests; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -121,7 +123,7 @@
 			A10000000000000000000005 /* TranscriptionEngine.swift in Sources */,
 			A10000000000000000000006 /* Exporters.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
-		C20000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001 /* TranscriptionCancellationTests.swift in Sources */, A20000000000000000000002 /* RuntimeConfigurationTests.swift in Sources */, A20000000000000000000003 /* ManagedRuntimeSetupTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		C20000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001 /* TranscriptionCancellationTests.swift in Sources */, A20000000000000000000002 /* RuntimeConfigurationTests.swift in Sources */, A20000000000000000000003 /* ManagedRuntimeSetupTests.swift in Sources */, A20000000000000000000004 /* PDFExportTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
