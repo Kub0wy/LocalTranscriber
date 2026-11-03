@@ -5,6 +5,8 @@ struct SettingsView: View {
     @StateObject private var s = SettingsStore.shared
     @ObservedObject var managedRuntime: ManagedRuntimeSetupModel
     @State private var configStatus = ""
+    @State private var runtimeErrors: [RuntimeValidationError]?
+    @State private var validatingRuntime = false
     @State private var showReinstallConfirmation = false
 
     private var managedInstallDirectory: URL {
@@ -80,8 +82,28 @@ struct SettingsView: View {
                     }
                 } else {
                     pathRow(s.tr("Python", "Python"), text: $s.pythonPath, automaticURL: RuntimePathResolver().resolve(RuntimeConfiguration(mode: .managed, customPythonPath: "", customFFmpegPath: "", customModelPath: "")).pythonExecutableURL, chooseDirectory: false)
+                    Text(s.tr(
+                        "Wskaż plik wykonywalny Python wewnątrz środowiska z zainstalowanym mlx-whisper, np. /path/to/venv/bin/python.",
+                        "Select the Python executable inside the environment with mlx-whisper installed, e.g. /path/to/venv/bin/python."
+                    ))
+                    .font(AppTheme.secondaryFont).foregroundStyle(.secondary)
                     pathRow("FFmpeg", text: $s.ffmpegPath, automaticURL: RuntimePathResolver().resolve(RuntimeConfiguration(mode: .managed, customPythonPath: "", customFFmpegPath: "", customModelPath: "")).ffmpegExecutableURL, chooseDirectory: false)
                     pathRow(s.tr("Model Whisper", "Whisper model"), text: $s.modelPath, automaticURL: RuntimePathResolver().resolve(RuntimeConfiguration(mode: .managed, customPythonPath: "", customFFmpegPath: "", customModelPath: "")).modelDirectoryURL, chooseDirectory: true)
+                    HStack {
+                        Button(s.tr("Sprawdź", "Validate"), action: validateCustomRuntime)
+                            .disabled(validatingRuntime)
+                        if validatingRuntime { ProgressView().controlSize(.small) }
+                    }
+                    if let runtimeErrors {
+                        if runtimeErrors.isEmpty {
+                            Text(s.tr("Python, mlx-whisper, FFmpeg i model Whisper: gotowe.", "Python, mlx-whisper, FFmpeg and Whisper model: ready."))
+                                .foregroundStyle(.green)
+                        } else {
+                            ForEach(runtimeErrors.indices, id: \.self) { index in
+                                Text(runtimeErrors[index].localizedDescription).foregroundStyle(.red)
+                            }
+                        }
+                    }
                 }
                 Text(s.tr("Katalog modelu może wskazywać pamięć podręczną Whispera albo bezpośrednio snapshot. Aplikacja sama odnajduje aktualny snapshot.", "The model directory may point to the Whisper cache or directly to a snapshot. The app automatically finds the current snapshot."))
                     .font(AppTheme.secondaryFont).foregroundStyle(.secondary)
@@ -146,10 +168,28 @@ struct SettingsView: View {
                 "Runtime will be downloaded again from GitHub and replaced atomically. The model and Custom settings remain unchanged."
             ))
         }
+        .onChange(of: s.runtimeConfiguration) { _, _ in
+            runtimeErrors = nil
+        }
         .onChange(of: s.runtimeMode) { _, mode in
             if mode == .managed {
                 managedRuntime.inspect(installDirectory: managedInstallDirectory, mode: mode)
             }
+        }
+    }
+
+    private func validateCustomRuntime() {
+        let configuration = s.runtimeConfiguration
+        let paths = s.resolvedRuntimePaths
+        validatingRuntime = true
+        runtimeErrors = nil
+        Task {
+            let errors = await Task.detached(priority: .userInitiated) {
+                RuntimeValidator().validationErrors(paths)
+            }.value
+            // Do not display a result for paths that changed during validation.
+            if s.runtimeConfiguration == configuration { runtimeErrors = errors }
+            validatingRuntime = false
         }
     }
 

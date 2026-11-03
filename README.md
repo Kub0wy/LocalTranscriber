@@ -256,6 +256,27 @@ You can independently provide:
 - **FFmpeg executable**
 - **Whisper model directory**
 
+To prepare a manual environment on an Apple Silicon Mac, create a virtual
+environment with a Python version supported by `mlx-whisper`, then install the
+backend into that exact environment:
+
+```sh
+python3 -m venv /path/to/venv
+/path/to/venv/bin/python -m pip install mlx-whisper
+/path/to/venv/bin/python -c "import mlx_whisper"
+```
+
+In Settings, select **Custom** runtime and set Python to
+`/path/to/venv/bin/python` (the executable inside the environment). Install
+FFmpeg separately and select its `ffmpeg` executable. Download a compatible MLX
+Whisper model and select its snapshot or cache directory below.
+
+Click **Validate** (**Sprawdź** in Polish) to check Python, the `mlx_whisper`
+import, FFmpeg availability, and model snapshot discovery. A failed import is
+reported separately from a missing or unusable Python executable. Transcription
+also checks the import during preflight and stops before launching the worker
+if it fails.
+
 Each empty custom field falls back to the managed default for that component.
 
 The model directory may point either to:

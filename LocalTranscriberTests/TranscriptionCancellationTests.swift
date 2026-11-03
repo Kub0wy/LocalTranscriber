@@ -11,7 +11,7 @@ final class TranscriptionCancellationTests: XCTestCase {
         let worker: URL
 
         var engine: TranscriptionEngine {
-            TranscriptionEngine(workerURL: worker, temporaryDirectory: temp)
+            TranscriptionEngine(workerURL: worker, temporaryDirectory: temp, runtimeValidator: RuntimeValidator(runProcess: { _, _ in 0 }))
         }
     }
 
@@ -76,6 +76,28 @@ final class TranscriptionCancellationTests: XCTestCase {
         } catch {
             XCTFail("Expected CancellationError, got \(error)", file: file, line: line)
         }
+    }
+
+    func testFailedMLXImportBlocksWorkerDuringPreflight() async throws {
+        let fixture = try fixture(workerBody: "raise Exception('Worker must not run')")
+        let engine = TranscriptionEngine(
+            workerURL: fixture.worker,
+            temporaryDirectory: fixture.temp,
+            runtimeValidator: RuntimeValidator(runProcess: { _, arguments in
+                arguments == ["-c", "import mlx_whisper"] ? 1 : 0
+            })
+        )
+        do {
+            _ = try await engine.transcribe(
+                input: fixture.input, pythonPath: "/usr/bin/python3",
+                ffmpegPath: "/usr/bin/true", modelPath: fixture.model.path,
+                language: "auto", translateToEnglish: false, transcriptionConfig: "{}"
+            ) { _ in XCTFail("Worker output must not be produced") }
+            XCTFail("Preflight should reject the missing backend")
+        } catch let error as RuntimeValidationError {
+            XCTAssertEqual(error.component, .mlxWhisper)
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: fixture.temp.path), [])
     }
 
     func testCancelDuringTranscriptionStopsBackendAndCleansResources() async throws {

@@ -135,8 +135,10 @@ final class ProcessCancellationController: @unchecked Sendable {
 final class TranscriptionEngine {
     private let workerURL: URL?
     private let temporaryDirectory: URL
+    private let runtimeValidator: RuntimeValidator
 
-    init(workerURL: URL? = nil, temporaryDirectory: URL = FileManager.default.temporaryDirectory) {
+    init(workerURL: URL? = nil, temporaryDirectory: URL = FileManager.default.temporaryDirectory, runtimeValidator: RuntimeValidator = RuntimeValidator()) {
+        self.runtimeValidator = runtimeValidator
         self.workerURL = workerURL
         self.temporaryDirectory = temporaryDirectory
     }
@@ -149,12 +151,12 @@ final class TranscriptionEngine {
         transcriptionConfig: String,
         onLine: @escaping @Sendable (String) -> Void
     ) async throws -> WorkerResult {
-        try RuntimeValidator().validateExecutables(runtimePaths)
+        try runtimeValidator.validateExecutables(runtimePaths)
         guard let worker = workerURL ?? Bundle.main.url(forResource: "transcribe_worker", withExtension: "py") else {
             throw TranscriptionError.invalidSettings(appText("Brakuje składnika transkrypcji w aplikacji. Zainstaluj ponownie LocalTranscriber.", "A transcription component is missing from the app. Reinstall LocalTranscriber."))
         }
 
-        let resolvedModelPath = try resolveModelPath(runtimePaths.modelDirectoryURL)
+        let resolvedModelPath = try runtimeValidator.resolveModelPath(runtimePaths.modelDirectoryURL)
         try Task.checkCancellation()
 
         let temp = temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("json")
@@ -232,47 +234,6 @@ final class TranscriptionEngine {
             cancellation.cancel()
         }
     }
-    private func resolveModelPath(_ configuredURL: URL) throws -> String {
-        let fm = FileManager.default
-        try RuntimeValidator().validateModelDirectory(configuredURL)
-        let configuredPath = configuredURL.path
-
-        // If Settings already points directly at a model snapshot, use it.
-        if fm.fileExists(atPath: (configuredPath as NSString).appendingPathComponent("config.json")) {
-            return configuredPath
-        }
-
-        // Settings may point at the Hugging Face cache root, the model directory,
-        // or its snapshots directory. Find snapshots that contain config.json.
-        guard let enumerator = fm.enumerator(
-            at: configuredURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
-            throw RuntimeValidationError(component: .model)
-        }
-
-        var candidates: [(url: URL, date: Date)] = []
-        for case let url as URL in enumerator {
-            guard url.lastPathComponent == "config.json" else { continue }
-            let folder = url.deletingLastPathComponent()
-            let path = folder.path
-
-            // Avoid accidentally selecting an unrelated model if the cache grows later.
-            let looksLikeWhisper = path.localizedCaseInsensitiveContains("whisper")
-            let looksLikeSnapshot = path.contains("/snapshots/")
-            guard looksLikeWhisper && looksLikeSnapshot else { continue }
-
-            let values = try? folder.resourceValues(forKeys: [.contentModificationDateKey])
-            candidates.append((folder, values?.contentModificationDate ?? .distantPast))
-        }
-
-        guard let best = candidates.max(by: { $0.date < $1.date }) else {
-            throw RuntimeValidationError(component: .model)
-        }
-        return best.url.path
-    }
-
     /// Compatibility entry point for callers that already supply individual
     /// paths. Resolution still passes through the centralized runtime layer.
     func transcribe(

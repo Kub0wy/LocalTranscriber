@@ -79,6 +79,72 @@ final class RuntimeConfigurationTests: XCTestCase {
         }
     }
 
+    private func validationPaths(python: String = "/usr/bin/true", model: String = "/tmp") -> ResolvedRuntimePaths {
+        RuntimePathResolver().resolve(RuntimeConfiguration(
+            mode: .custom, customPythonPath: python,
+            customFFmpegPath: "/usr/bin/true", customModelPath: model
+        ))
+    }
+
+    func testExecutablePythonWithSuccessfulMLXImportPasses() throws {
+        let paths = validationPaths()
+        let imported = expectation(description: "Selected Python imports mlx_whisper")
+        let validator = RuntimeValidator(runProcess: { executable, arguments in
+            XCTAssertEqual(executable.path, "/usr/bin/true")
+            if arguments == ["-c", "import mlx_whisper"] { imported.fulfill() }
+            XCTAssertTrue([["--version"], ["-c", "import mlx_whisper"], ["-version"]].contains(arguments))
+            return 0
+        })
+        XCTAssertNoThrow(try validator.validateExecutables(paths))
+        wait(for: [imported], timeout: 0.1)
+    }
+
+    func testExecutablePythonWithFailedMLXImportIsDistinctFromMissingPython() {
+        let validator = RuntimeValidator(runProcess: { _, arguments in
+            arguments == ["-c", "import mlx_whisper"] ? 1 : 0
+        })
+        XCTAssertThrowsError(try validator.validateExecutables(validationPaths())) { error in
+            XCTAssertEqual((error as? RuntimeValidationError)?.component, .mlxWhisper)
+        }
+    }
+
+    func testMissingPythonDoesNotLaunchProcess() {
+        let validator = RuntimeValidator(runProcess: { _, _ in
+            XCTFail("Missing Python must be rejected before launching a process")
+            return 0
+        })
+        XCTAssertThrowsError(try validator.validateExecutables(validationPaths(python: "/missing-\(UUID().uuidString)/python"))) { error in
+            XCTAssertEqual((error as? RuntimeValidationError)?.component, .python)
+        }
+    }
+
+    func testPythonLaunchFailureIsReportedAsPythonError() {
+        let validator = RuntimeValidator(runProcess: { _, _ in throw CocoaError(.executableNotLoadable) })
+        XCTAssertThrowsError(try validator.validatePython(validationPaths())) { error in
+            XCTAssertEqual((error as? RuntimeValidationError)?.component, .python)
+        }
+    }
+
+    func testFailedFFmpegExecutionIsReported() {
+        let validator = RuntimeValidator(runProcess: { _, arguments in arguments == ["-version"] ? 1 : 0 })
+        XCTAssertThrowsError(try validator.validateExecutables(validationPaths())) { error in
+            XCTAssertEqual((error as? RuntimeValidationError)?.component, .ffmpeg)
+        }
+    }
+
+    func testCustomValidationChecksModelEvenWhenImportFails() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let validator = RuntimeValidator(runProcess: { _, arguments in
+            arguments == ["-c", "import mlx_whisper"] ? 1 : 0
+        })
+        XCTAssertEqual(validator.validationErrors(validationPaths(model: root.path)).map(\.component), [.mlxWhisper, .model])
+        try Data("{}".utf8).write(to: root.appendingPathComponent("config.json"))
+        XCTAssertEqual(validator.validationErrors(validationPaths(model: root.path)).map(\.component), [.mlxWhisper])
+        XCTAssertTrue(RuntimeValidator(runProcess: { _, _ in 0 }).validationErrors(validationPaths(model: root.path)).isEmpty)
+    }
+
     func testDefaultAdvancedConfigKeepsPreviousTextDisabled() {
         XCTAssertTrue(SettingsStore.defaultTranscriptionConfig.contains("\"condition_on_previous_text\": false"))
     }
