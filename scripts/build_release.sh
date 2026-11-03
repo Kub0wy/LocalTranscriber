@@ -4,7 +4,7 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-readonly VERSION="1.0.5"
+readonly VERSION="1.0.6"
 readonly PRODUCT_NAME="LocalTranscriber"
 readonly BUILD_DIR="$PROJECT_ROOT/release-build"
 readonly DERIVED_DATA_DIR="$BUILD_DIR/DerivedData"
